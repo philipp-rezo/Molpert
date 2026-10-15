@@ -1,0 +1,29 @@
+[build-system]
+# The module is compiled against the libraries bundled with the rdkit wheel in
+# the build environment. Choose its version with a build constraint, e.g.
+#   uv build --wheel --build-constraint constraints.txt  (rdkit==2024.9.6)
+# The wheel then requires exactly that rdkit version (see tools/molpert_build.py).
+requires = ["scikit-build-core>=1.1", "rdkit"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "molpert"
+dynamic = ["version", "dependencies"]
+description = "Library for graph-based perturbation of RDKit molecules"
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.urls]
+Homepage = "https://github.com/AlanKerstjens/Molpert"
+Paper = "https://doi.org/10.1186/s13321-023-00761-5"
+
+[[tool.dynamic-metadata]]
+provider = { path = "tools", module = "molpert_build" }
+base-version = "0.0.1"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+cmake.version = ">=3.18"
+build-dir = "build/{wheel_tag}"
+wheel.packages = []
+sdist.exclude = ["benchmark", "build", "dist", "lib"]

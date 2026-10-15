@@ -11,15 +11,66 @@ Molpert is distributed as source code. It is a header-only C++ library.
 If you are only interested in the C++ API all you have to do is clone the
 repository and add it to your compiler's include path.
 
-If you also need the Python API you must compile the Python module from 
-source. This requires a series of dependencies. For a lean installation we 
-recommend installing these either
+If you also need the Python API, the quickest way is to
+[build a wheel](#pip-installation). Alternatively you may compile
+the Python module yourself, which requires a series of dependencies.
+For a lean installation we recommend installing these either
 [from source or using your system's package manager](#system-installation).
 Alternatively, you may install the dependencies
 [using Anaconda](#anaconda-installation).
 
 The following instructions are for GNU/Linux. For alternative operating systems
 you will have to adapt these commands slightly.
+
+## pip installation
+
+On macOS (Apple silicon) and GNU/Linux you can build Python wheels that work
+with the `rdkit` wheels from PyPI. You need a C++20 compiler and
+[uv](https://docs.astral.sh/uv/).
+
+The module links against the RDKit and Boost libraries bundled with the
+`rdkit` wheel, so every molpert wheel works with exactly one `rdkit` version.
+The wheel records it as a dependency (`rdkit==2024.9.6`) and in its version
+(`0.0.1+rdkit2024.9.6`). To tell your own builds apart, set
+`MOLPERT_LOCAL_VERSION_SUFFIX`: `MOLPERT_LOCAL_VERSION_SUFFIX=test1` gives
+`0.0.1+rdkit2024.9.6.test1`. To build and test wheels for several versions run
+
+```shell
+RDKIT_VERSIONS="2024.9.6 2026.3.6" PYTHON_VERSIONS="3.11 3.12" \
+  scripts/build_wheels.sh
+```
+
+This builds wheels for the machine you run it on. To build GNU/Linux wheels
+from any OS with Docker run
+
+```shell
+RDKIT_VERSIONS="2024.9.6" PYTHON_VERSIONS="3.12" ARCHS="x86_64 aarch64" \
+  scripts/build_linux_wheels.sh
+```
+
+It builds in the `manylinux_2_28` containers the `rdkit` wheels are built in.
+Building for an architecture other than your machine's runs under emulation
+and is slower.
+
+Both scripts install every wheel into a fresh environment and run
+`tests/smoke_test.py` before keeping it. The wheels end up in `dist/`. To use them, point uv to that directory
+(or wherever you host the wheels). uv then picks the wheel matching the `rdkit`
+version your project pins:
+
+```toml
+[tool.uv]
+find-links = ["path/to/dist"]
+```
+
+The build downloads the RDKit and Boost headers matching the `rdkit` wheel.
+Each download is checked against a hash pinned in
+`cmake/RDKitWheelHashes.cmake`. To support a new `rdkit` version, add the
+hash of its RDKit release there. The build error tells you which one is
+missing.
+
+Don't mix these wheels with an RDKit from conda in the same environment.
+If you use conda, follow the [Anaconda installation](#anaconda-installation)
+instead.
 
 ## System installation
 

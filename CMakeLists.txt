@@ -18,9 +18,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(Molpert_SOURCE_DIR ${PROJECT_SOURCE_DIR}/source)
 set(Molpert_LIBRARY_DIR ${PROJECT_SOURCE_DIR}/lib)
 
-# Search for the RDKit.
-# If found this will also retrieve the Boost version used to build the RDKit.
-find_package(RDKit REQUIRED)
+# Build the Python module against the rdkit wheel from PyPI.
+# This is the default when building through pip (scikit-build-core).
+if(DEFINED SKBUILD)
+  set(MOLPERT_RDKIT_WHEEL_DEFAULT ON)
+else()
+  set(MOLPERT_RDKIT_WHEEL_DEFAULT OFF)
+endif()
+option(MOLPERT_RDKIT_WHEEL
+  "Build the Python module against the rdkit wheel from PyPI"
+  ${MOLPERT_RDKIT_WHEEL_DEFAULT})
+
+if(MOLPERT_RDKIT_WHEEL)
+  # Fetch the headers matching the installed rdkit wheel
+  # and use the RDKit and Boost libraries bundled with it.
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+  include(RDKitWheel)
+else()
+  # Search for the RDKit.
+  # If found this will also retrieve the Boost version used to build the RDKit.
+  find_package(RDKit REQUIRED)
+endif()
 
 # Define the library target.
 add_library(Molpert INTERFACE)
@@ -59,14 +77,18 @@ if(BUILD_PYTHON_BINDINGS)
   add_definitions(-DBUILD_PYTHON_BINDINGS)
 
   # Search for the Python module dependencies.
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-  find_package(BoostPython REQUIRED)
+  # In wheel mode these were already set up by RDKitWheel.
+  if(NOT MOLPERT_RDKIT_WHEEL)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+    find_package(BoostPython REQUIRED)
+  endif()
 
   # To avoid ABI incompatibility, Molpert needs to be built using the 
   # same libraries that were used to build the RDKit. Check if we found them.
   from_conda(RDKit_FROM_CONDA
     RDKit_INCLUDE_DIRS RDKit_LIBRARY_DIRS)
-  if (RDKit_FROM_CONDA AND ENFORCE_LIBRARY_COMPATIBILITY)
+  if (RDKit_FROM_CONDA AND ENFORCE_LIBRARY_COMPATIBILITY
+      AND NOT MOLPERT_RDKIT_WHEEL)
     from_conda(REST_FROM_CONDA
       Boost_INCLUDE_DIRS Boost_LIBRARY_DIRS
       BoostPython_INCLUDE_DIRS BoostPython_LIBRARY
@@ -109,6 +131,9 @@ if(BUILD_PYTHON_BINDINGS)
     # On macOS don't link libpython, use dynamic lookup instead.
     set_target_properties(pyMolpert PROPERTIES
       LINK_FLAGS "-undefined dynamic_lookup")
+  elseif (MOLPERT_RDKIT_WHEEL)
+    # Python wheels must not link libpython.
+    # The symbols are resolved by the interpreter at runtime.
   else()
     # On GNU+Linux and Windows link libpython.
     target_link_directories(pyMolpert PUBLIC
@@ -118,12 +143,17 @@ if(BUILD_PYTHON_BINDINGS)
   endif()
 
   # Define RPATH.
-  set(LINK_DIRECTORIES
-    ${Boost_LIBRARY_DIRS}
-    ${RDKit_LIBRARY_DIRS}
-    ${Python3_LIBRARY_DIRS})
-  list(REMOVE_DUPLICATES LINK_DIRECTORIES)
-  string(JOIN ":" RPATH ${LINK_DIRECTORIES})
+  if (MOLPERT_RDKIT_WHEEL)
+    # The module is installed next to the rdkit package in site-packages.
+    set(RPATH ${RDKit_WHEEL_RPATH})
+  else()
+    set(LINK_DIRECTORIES
+      ${Boost_LIBRARY_DIRS}
+      ${RDKit_LIBRARY_DIRS}
+      ${Python3_LIBRARY_DIRS})
+    list(REMOVE_DUPLICATES LINK_DIRECTORIES)
+    string(JOIN ":" RPATH ${LINK_DIRECTORIES})
+  endif()
 
   set_target_properties(pyMolpert PROPERTIES
     INSTALL_RPATH ${RPATH})
@@ -134,9 +164,16 @@ if(BUILD_PYTHON_BINDINGS)
     IMPORT_PREFIX ""
     OUTPUT_NAME "molpert")
 
+  # When building a wheel, install into the wheel's root (site-packages).
+  if (DEFINED SKBUILD)
+    set(Molpert_INSTALL_DIR .)
+  else()
+    set(Molpert_INSTALL_DIR ${Molpert_LIBRARY_DIR})
+  endif()
+
   install(
     TARGETS
       pyMolpert
-    DESTINATION ${Molpert_LIBRARY_DIR})
+    DESTINATION ${Molpert_INSTALL_DIR})
 
 endif()
